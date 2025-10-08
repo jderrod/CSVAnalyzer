@@ -61,8 +61,39 @@ class AnalyzerApp(tk.Tk):
         )
         summary_label.pack(fill=tk.X, padx=10, pady=(0, 10))
 
-        self.output = tk.Text(self, wrap=tk.WORD)
-        self.output.pack(expand=True, fill=tk.BOTH, padx=10, pady=(0, 10))
+        columns_wrapper = tk.Frame(self)
+        columns_wrapper.pack(expand=True, fill=tk.BOTH, padx=10, pady=(0, 5))
+
+        self.columns_canvas = tk.Canvas(columns_wrapper, highlightthickness=0)
+        self.columns_canvas.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
+
+        self.columns_vscroll = tk.Scrollbar(
+            columns_wrapper, orient=tk.VERTICAL, command=self.columns_canvas.yview
+        )
+        self.columns_vscroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.columns_canvas.configure(yscrollcommand=self.columns_vscroll.set)
+
+        self.columns_container = tk.Frame(self.columns_canvas)
+        self.columns_window = self.columns_canvas.create_window(
+            (0, 0), window=self.columns_container, anchor="nw"
+        )
+
+        def _on_container_configure(event: tk.Event) -> None:
+            self.columns_canvas.configure(scrollregion=self.columns_canvas.bbox("all"))
+
+        self.columns_container.bind("<Configure>", _on_container_configure)
+
+        def _on_canvas_configure(event: tk.Event) -> None:
+            self.columns_canvas.itemconfigure(self.columns_window, height=event.height)
+
+        self.columns_canvas.bind("<Configure>", _on_canvas_configure)
+
+        self.columns_hscroll = tk.Scrollbar(
+            self, orient=tk.HORIZONTAL, command=self.columns_canvas.xview
+        )
+        self.columns_hscroll.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.columns_canvas.configure(xscrollcommand=self.columns_hscroll.set)
 
         self._prefill_defaults()
         self._latest_result = None
@@ -124,7 +155,6 @@ class AnalyzerApp(tk.Tk):
         if missing:
             messagebox.showerror("Missing File", "\n".join(missing))
             return
-        self.output.delete("1.0", tk.END)
         self.summary_var.set("")
         try:
             result = analyze(machine_file=machine_file, operator_file=operator_file)
@@ -143,8 +173,7 @@ class AnalyzerApp(tk.Tk):
             f" (correct: {result.total_operator_intervals - result.total_operator_mismatches})"
         )
         self.summary_var.set(summary)
-        formatted = _format_result(result)
-        self.output.insert(tk.END, formatted)
+        self._populate_machine_columns(result)
 
     def _export_csv(self) -> None:
         if self._latest_result is None:
@@ -163,6 +192,55 @@ class AnalyzerApp(tk.Tk):
             messagebox.showerror("Export Failed", str(exc))
             return
         messagebox.showinfo("Export Complete", f"Results saved to {export_path}")
+
+    def _populate_machine_columns(self, result) -> None:
+        for child in self.columns_container.winfo_children():
+            child.destroy()
+
+        for machine_name, report in result.machines.items():
+            column = tk.Frame(self.columns_container, borderwidth=1, relief=tk.GROOVE)
+            column.pack(side=tk.LEFT, padx=5, pady=5, fill=tk.Y)
+            column.configure(width=260)
+            column.pack_propagate(False)
+
+            title = tk.Label(column, text=machine_name, font=("Segoe UI", 12, "bold"))
+            title.pack(anchor="n", pady=(8, 4))
+
+            summary_text = (
+                f"Machine mismatches: {report.machine_mismatch_count}/{report.total_machine_events}\n"
+                f"Machine correct: {report.machine_correct_count}\n"
+                f"Operator mismatches: {report.operator_mismatch_count}/{report.total_operator_intervals}\n"
+                f"Operator correct: {report.operator_correct_count}"
+            )
+            tk.Label(
+                column,
+                text=summary_text,
+                justify=tk.LEFT,
+                anchor="w",
+                font=("Segoe UI", 9),
+            ).pack(fill=tk.X, padx=8)
+
+            tk.Label(
+                column, text="Machine activations without operator", font=("Segoe UI", 9, "bold")
+            ).pack(anchor="w", padx=8, pady=(8, 2))
+            machine_list = tk.Listbox(column, height=6, width=32)
+            machine_list.pack(fill=tk.BOTH, expand=True, padx=8)
+            for ts in report.machine_without_operator:
+                machine_list.insert(tk.END, ts.isoformat())
+            if not report.machine_without_operator:
+                machine_list.insert(tk.END, "None")
+
+            tk.Label(
+                column, text="Operator presence without machine", font=("Segoe UI", 9, "bold")
+            ).pack(anchor="w", padx=8, pady=(8, 2))
+            operator_list = tk.Listbox(column, height=6, width=32)
+            operator_list.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+            for start, end in report.operator_without_machine:
+                operator_list.insert(tk.END, f"{start.isoformat()} - {end.isoformat()}")
+            if not report.operator_without_machine:
+                operator_list.insert(tk.END, "None")
+
+        self.columns_canvas.configure(scrollregion=self.columns_canvas.bbox("all"))
 
 
 def main() -> None:
