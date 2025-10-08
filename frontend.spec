@@ -5,7 +5,10 @@ a = Analysis(
     ['frontend.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        ('images/pikachu.jpg', 'images'),
+        ('images/kirby.jpg', 'images'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

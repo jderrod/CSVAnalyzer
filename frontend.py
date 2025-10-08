@@ -2,6 +2,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
+from PIL import Image, ImageTk
+
 from analyzer import (
     AnalysisError,
     _format_result,
@@ -21,6 +23,7 @@ class AnalyzerApp(tk.Tk):
     def _create_widgets(self) -> None:
         machine_frame = tk.Frame(self)
         machine_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+        self._add_header_images()
         tk.Label(machine_frame, text="Machine file:").pack(side=tk.LEFT)
         self.machine_file_var = tk.StringVar()
         machine_entry = tk.Entry(
@@ -63,6 +66,28 @@ class AnalyzerApp(tk.Tk):
 
         self._prefill_defaults()
         self._latest_result = None
+
+    def _add_header_images(self) -> None:
+        image_frame = tk.Frame(self)
+        image_frame.pack(fill=tk.X, padx=10, pady=(5, 0))
+
+        def _load_image(path: Path) -> ImageTk.PhotoImage | None:
+            if not path.exists():
+                return None
+            with Image.open(path) as img:
+                resized = img.resize((64, 64), Image.Resampling.LANCZOS)
+                return ImageTk.PhotoImage(resized)
+
+        base_path = Path(__file__).resolve().parent
+        images_path = base_path / "images"
+
+        self._left_image = _load_image(images_path / "pikachu.jpg")
+        self._right_image = _load_image(images_path / "kirby.jpg")
+
+        left_label = tk.Label(image_frame, image=self._left_image)
+        left_label.pack(side=tk.LEFT, anchor="nw")
+        right_label = tk.Label(image_frame, image=self._right_image)
+        right_label.pack(side=tk.RIGHT, anchor="ne")
 
     def _prefill_defaults(self) -> None:
         try:
@@ -111,10 +136,11 @@ class AnalyzerApp(tk.Tk):
             return
         self._latest_result = result
         summary = (
-            "Machine mismatches: "
-            f"{len(result.machine_without_operator)}/{result.total_machine_events}\n"
-            "Operator mismatches: "
-            f"{len(result.operator_without_machine)}/{result.total_operator_intervals}"
+            "Overall Summary\n"
+            f"Machine mismatches: {result.total_machine_mismatches}/{result.total_machine_events}"
+            f" (correct: {result.total_machine_events - result.total_machine_mismatches})\n"
+            f"Operator mismatches: {result.total_operator_mismatches}/{result.total_operator_intervals}"
+            f" (correct: {result.total_operator_intervals - result.total_operator_mismatches})"
         )
         self.summary_var.set(summary)
         formatted = _format_result(result)
